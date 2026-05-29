@@ -9,6 +9,14 @@ function getQueryParam(req: Request, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function sanitizeReturnPath(path: unknown): string {
+  if (typeof path !== "string") return "/dashboard";
+  if (!path.startsWith("/")) return "/dashboard";
+  if (path.startsWith("//")) return "/dashboard";
+  if (/^https?:\/\//i.test(path)) return "/dashboard";
+  return path;
+}
+
 export function registerOAuthRoutes(app: Express) {
   app.get("/api/oauth/callback", async (req: Request, res: Response) => {
     const code = getQueryParam(req, "code");
@@ -47,10 +55,9 @@ export function registerOAuthRoutes(app: Express) {
       // Parse state to extract returnPath if present
       let redirectTo = "/dashboard";
       try {
-        const decoded = JSON.parse(atob(state));
-        if (decoded.returnPath && typeof decoded.returnPath === "string") {
-          redirectTo = decoded.returnPath;
-        }
+        const decodedState = Buffer.from(state, "base64").toString("utf8");
+        const decoded = JSON.parse(decodedState);
+        redirectTo = sanitizeReturnPath(decoded.returnPath);
       } catch {
         // state is not our JSON format, use default
       }

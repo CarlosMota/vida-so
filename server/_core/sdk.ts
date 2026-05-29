@@ -1,3 +1,5 @@
+import { randomBytes, randomUUID } from "node:crypto";
+
 export const sdk = {
   async exchangeCodeForToken(_code: string, _state: string) {
     return { accessToken: "demo-access-token" };
@@ -12,6 +14,6 @@ export const sdk = {
     };
   },
   async createSessionToken(openId: string, _options?: { name?: string; expiresInMs?: number }) {
-    return `demo-session-${openId}`;
+    return `${openId}.${randomUUID()}.${randomBytes(32).toString("hex")}`;
   },
 };

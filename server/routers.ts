@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { providerProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 import {
   upsertUser,
@@ -16,12 +17,14 @@ import {
   listCleaners,
   getCleanerById,
   createBooking,
+  getBookingById,
   getUserBookings,
   updateBookingStatus,
   getProviderBookings,
   getUserShoppingLists,
   createShoppingList,
   getShoppingListById,
+  getShoppingItemById,
   getShoppingItems,
   addShoppingItem,
   removeShoppingItem,
@@ -155,28 +158,43 @@ const bookingsRouter = router({
     }),
   cancel: protectedProcedure
     .input(z.object({ bookingId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const booking = await getBookingById(input.bookingId);
+      if (!booking || booking.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Booking not found for current user" });
+      }
       await updateBookingStatus(input.bookingId, "cancelled");
       return { success: true };
     }),
   confirm: protectedProcedure
     .input(z.object({ bookingId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const booking = await getBookingById(input.bookingId);
+      if (!booking || booking.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Booking not found for current user" });
+      }
       await updateBookingStatus(input.bookingId, "confirmed");
       return { success: true };
     }),
   complete: protectedProcedure
     .input(z.object({ bookingId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const booking = await getBookingById(input.bookingId);
+      if (!booking || booking.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Booking not found for current user" });
+      }
       await updateBookingStatus(input.bookingId, "completed");
       return { success: true };
     }),
-  getProviderBookings: protectedProcedure
+  getProviderBookings: providerProcedure
     .input(z.object({
       providerId: z.number(),
       serviceType: z.enum(["chef", "cleaning"]),
     }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin" && input.providerId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Provider can only access own bookings" });
+      }
       return getProviderBookings(input.providerId, input.serviceType);
     }),
 });
@@ -194,7 +212,11 @@ const shoppingRouter = router({
     }),
   getItems: protectedProcedure
     .input(z.object({ listId: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const list = await getShoppingListById(input.listId);
+      if (!list || list.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Shopping list not found for current user" });
+      }
       return getShoppingItems(input.listId);
     }),
   addItem: protectedProcedure
@@ -206,20 +228,40 @@ const shoppingRouter = router({
       estimatedPrice: z.number().optional(),
       category: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const list = await getShoppingListById(input.listId);
+      if (!list || list.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Shopping list not found for current user" });
+      }
       const { listId, ...item } = input;
       await addShoppingItem(listId, item);
       return { success: true };
     }),
   removeItem: protectedProcedure
     .input(z.object({ itemId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const item = await getShoppingItemById(input.itemId);
+      if (!item) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Shopping item not found" });
+      }
+      const list = await getShoppingListById(item.listId);
+      if (!list || list.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Shopping item not found for current user" });
+      }
       await removeShoppingItem(input.itemId);
       return { success: true };
     }),
   toggleItem: protectedProcedure
     .input(z.object({ itemId: z.number(), checked: z.boolean() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const item = await getShoppingItemById(input.itemId);
+      if (!item) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Shopping item not found" });
+      }
+      const list = await getShoppingListById(item.listId);
+      if (!list || list.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Shopping item not found for current user" });
+      }
       await toggleShoppingItem(input.itemId, input.checked);
       return { success: true };
     }),
@@ -229,7 +271,11 @@ const shoppingRouter = router({
       deliveryAt: z.string(),
       deliveryAddress: z.string(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const list = await getShoppingListById(input.listId);
+      if (!list || list.userId !== ctx.user.id) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Shopping list not found for current user" });
+      }
       await scheduleDelivery(input.listId, new Date(input.deliveryAt), input.deliveryAddress);
       return { success: true };
     }),

@@ -211,6 +211,13 @@ export async function getUserBookings(userId: number) {
   return db.select().from(bookings).where(eq(bookings.userId, userId)).orderBy(desc(bookings.scheduledAt));
 }
 
+export async function getBookingById(bookingId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(bookings).where(eq(bookings.id, bookingId)).limit(1);
+  return result[0] ?? null;
+}
+
 export async function updateBookingStatus(bookingId: number, status: "pending" | "confirmed" | "completed" | "cancelled") {
   const db = await getDb();
   if (!db) return;
@@ -251,6 +258,13 @@ export async function getShoppingItems(listId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(shoppingItems).where(eq(shoppingItems.listId, listId)).orderBy(shoppingItems.createdAt);
+}
+
+export async function getShoppingItemById(itemId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(shoppingItems).where(eq(shoppingItems.id, itemId)).limit(1);
+  return result[0] ?? null;
 }
 
 export async function addShoppingItem(listId: number, item: { name: string; quantity?: string; unit?: string; estimatedPrice?: number; category?: string }) {

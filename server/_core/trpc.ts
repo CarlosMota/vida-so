@@ -17,3 +17,11 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
     },
   });
 });
+
+export const providerProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "provider" && ctx.user.role !== "admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Provider role required" });
+  }
+
+  return next();
+});
