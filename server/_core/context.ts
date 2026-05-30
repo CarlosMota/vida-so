@@ -1,4 +1,14 @@
-import type { Request, Response } from "express";
+import type { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
+
+type ContextRequest = {
+  protocol?: string;
+  headers?: Record<string, unknown>;
+};
+
+type ContextResponse = {
+  clearCookie: (name: string, options?: unknown) => void;
+};
+
 export type TrpcContext = {
   user: {
     id: number;
@@ -15,6 +25,24 @@ export type TrpcContext = {
     updatedAt?: Date;
     lastSignedIn?: Date;
   } | null;
-  req: Request;
-  res: Response;
+  req: ContextRequest;
+  res: ContextResponse;
 };
+
+export async function createContext(opts: CreateFastifyContextOptions): Promise<TrpcContext> {
+  const req: ContextRequest = {
+    protocol: opts.req.protocol,
+    headers: opts.req.headers as Record<string, unknown>,
+  };
+
+  // Cookie auth is not wired yet in Fastify bootstrap.
+  const res: ContextResponse = {
+    clearCookie: () => {},
+  };
+
+  return {
+    user: null,
+    req,
+    res,
+  };
+}

@@ -1,11 +1,13 @@
 import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
-import type { Express, Request, Response } from "express";
+import { serialize } from "cookie";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import * as db from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { sdk } from "./_core/sdk";
 
-function getQueryParam(req: Request, key: string): string | undefined {
-  const value = req.query[key];
+function getQueryParam(req: FastifyRequest, key: string): string | undefined {
+  const query = req.query as Record<string, unknown> | undefined;
+  const value = query?.[key];
   return typeof value === "string" ? value : undefined;
 }
 
@@ -17,13 +19,13 @@ function sanitizeReturnPath(path: unknown): string {
   return path;
 }
 
-export function registerOAuthRoutes(app: Express) {
-  app.get("/api/oauth/callback", async (req: Request, res: Response) => {
+export function registerOAuthRoutes(app: FastifyInstance) {
+  app.get("/api/oauth/callback", async (req: FastifyRequest, res: FastifyReply) => {
     const code = getQueryParam(req, "code");
     const state = getQueryParam(req, "state");
 
     if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
+      res.status(400).send({ error: "code and state are required" });
       return;
     }
 
@@ -32,7 +34,7 @@ export function registerOAuthRoutes(app: Express) {
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
 
       if (!userInfo.openId) {
-        res.status(400).json({ error: "openId missing from user info" });
+        res.status(400).send({ error: "openId missing from user info" });
         return;
       }
 
@@ -50,7 +52,11 @@ export function registerOAuthRoutes(app: Express) {
       });
 
       const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+      const cookieHeader = serialize(COOKIE_NAME, sessionToken, {
+        ...cookieOptions,
+        maxAge: Math.floor(ONE_YEAR_MS / 1000),
+      });
+      res.header("set-cookie", cookieHeader);
 
       // Parse state to extract returnPath if present
       let redirectTo = "/dashboard";
@@ -65,7 +71,7 @@ export function registerOAuthRoutes(app: Express) {
       res.redirect(302, redirectTo);
     } catch (error) {
       console.error("[OAuth] Callback failed", error);
-      res.status(500).json({ error: "OAuth callback failed" });
+      res.status(500).send({ error: "OAuth callback failed" });
     }
   });
 }

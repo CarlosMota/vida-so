@@ -30,7 +30,7 @@ function run(cmd, label) {
 console.log("🗄️  VidaSó — Migrations do Banco de Dados\n");
 console.log(`📁 Diretório raiz: ${ROOT}`);
 
-run("npx drizzle-kit generate", "Gerando arquivos de migration SQL");
-run("npx drizzle-kit migrate", "Aplicando migrations no banco de dados");
+run("npx drizzle-kit generate --config=drizzle.config.ts", "Gerando arquivos de migration SQL");
+run("npx drizzle-kit migrate --config=drizzle.config.ts", "Aplicando migrations no banco de dados");
 
 console.log("\n✨ Todas as migrations foram aplicadas com sucesso!");
