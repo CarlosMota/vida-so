@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { savePreferencesReal } from "@/lib/trpc-real";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,7 @@ const DIETARY_OPTIONS = ["Vegetariano", "Vegano", "Sem glúten", "Sem lactose", 
 const ALLERGY_OPTIONS = ["Amendoim", "Frutos do mar", "Leite", "Ovos", "Trigo", "Soja", "Nozes", "Peixe"];
 
 export default function Onboarding() {
+  const useRealApi = import.meta.env.VITE_USE_REAL_API !== "false";
   const { isAuthenticated } = useAuth();
   const [, navigate] = useLocation();
   const [step, setStep] = useState(1);
@@ -25,6 +27,7 @@ export default function Onboarding() {
   const [allergies, setAllergies] = useState<string[]>([]);
   const [budget, setBudget] = useState("");
   const [deliveryTime, setDeliveryTime] = useState("08:00");
+  const [savingReal, setSavingReal] = useState(false);
 
   const savePrefs = trpc.preferences.save.useMutation({
     onSuccess: () => {
@@ -53,14 +56,28 @@ export default function Onboarding() {
   };
 
   const handleFinish = () => {
-    savePrefs.mutate({
+    const payload = {
       cuisineTypes: cuisines,
       dietaryRestrictions: dietary,
       allergies,
       monthlyBudget: parseFloat(budget) || 0,
       preferredDeliveryTime: deliveryTime,
       onboardingCompleted: true,
-    });
+    };
+
+    if (!useRealApi) {
+      savePrefs.mutate(payload);
+      return;
+    }
+
+    setSavingReal(true);
+    void savePreferencesReal(payload)
+      .then(() => {
+        toast.success("Perfil configurado com sucesso!");
+        navigate("/dashboard");
+      })
+      .catch(() => toast.error("Erro ao salvar preferências"))
+      .finally(() => setSavingReal(false));
   };
 
   const totalSteps = 4;
@@ -254,9 +271,9 @@ export default function Onboarding() {
                   <Button
                     className="flex-1 gradient-brand text-white border-0 btn-scale gap-2"
                     onClick={handleFinish}
-                    disabled={savePrefs.isPending}
+                    disabled={savePrefs.isPending || savingReal}
                   >
-                    {savePrefs.isPending ? "Salvando..." : "Concluir"} <CheckCircle2 className="w-4 h-4" />
+                    {(savePrefs.isPending || savingReal) ? "Salvando..." : "Concluir"} <CheckCircle2 className="w-4 h-4" />
                   </Button>
                 </div>
               </CardContent>

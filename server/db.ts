@@ -37,7 +37,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   const values: InsertUser = { openId: user.openId };
   const updateSet: Record<string, unknown> = {};
 
-  const textFields = ["name", "email", "loginMethod"] as const;
+  const textFields = ["name", "email", "loginMethod", "phone", "city", "address", "avatarUrl"] as const;
   textFields.forEach((field) => {
     const value = user[field];
     if (value === undefined) return;
@@ -74,6 +74,25 @@ export async function updateUserProfile(userId: number, data: Partial<{ name: st
   const db = await getDb();
   if (!db) return;
   await db.update(users).set(data).where(eq(users.id, userId));
+}
+
+export async function createCustomerProfile(data: {
+  name: string;
+  email: string;
+  phone?: string;
+}) {
+  const openId = `local:${data.email.toLowerCase()}`;
+  await upsertUser({
+    openId,
+    name: data.name,
+    email: data.email,
+    phone: data.phone ?? null,
+    role: "user",
+    loginMethod: "local-signup",
+    lastSignedIn: new Date(),
+  });
+  const user = await getUserByOpenId(openId);
+  return { success: true as const, userId: user?.id ?? null };
 }
 
 // ─── User Preferences ─────────────────────────────────────────────────────────
@@ -127,6 +146,47 @@ export async function getChefById(id: number) {
   if (!db) return null;
   const result = await db.select().from(chefs).where(eq(chefs.id, id)).limit(1);
   return result[0] ?? null;
+}
+
+export async function createChefProvider(data: {
+  name: string;
+  email: string;
+  phone?: string;
+  city: string;
+  specialties: string[];
+  cuisineTypes: string[];
+  pricePerPerson: number;
+  bio?: string;
+  experience?: number;
+  isAvailable?: boolean;
+}) {
+  const openId = `provider-chef:${data.email.toLowerCase()}`;
+  await upsertUser({
+    openId,
+    name: data.name,
+    email: data.email,
+    phone: data.phone ?? null,
+    city: data.city,
+    role: "provider",
+    loginMethod: "provider-signup",
+    lastSignedIn: new Date(),
+  });
+  const user = await getUserByOpenId(openId);
+
+  const db = await getDb();
+  if (!db) return { success: true as const, providerId: null };
+  await db.insert(chefs).values({
+    userId: user?.id ?? null,
+    name: data.name,
+    city: data.city,
+    bio: data.bio ?? null,
+    specialties: data.specialties,
+    cuisineTypes: data.cuisineTypes,
+    pricePerPerson: data.pricePerPerson,
+    experience: data.experience ?? 0,
+    isAvailable: data.isAvailable ?? true,
+  });
+  return { success: true as const };
 }
 
 export async function matchChefsForUser(userId: number) {
@@ -185,6 +245,46 @@ export async function getCleanerById(id: number) {
   if (!db) return null;
   const result = await db.select().from(cleaners).where(eq(cleaners.id, id)).limit(1);
   return result[0] ?? null;
+}
+
+export async function createCleanerProvider(data: {
+  name: string;
+  email: string;
+  phone?: string;
+  city: string;
+  serviceTypes: string[];
+  priceBasic: number;
+  priceDeep?: number;
+  priceWeekly?: number;
+  bio?: string;
+  isAvailable?: boolean;
+}) {
+  const openId = `provider-cleaner:${data.email.toLowerCase()}`;
+  await upsertUser({
+    openId,
+    name: data.name,
+    email: data.email,
+    phone: data.phone ?? null,
+    city: data.city,
+    role: "provider",
+    loginMethod: "provider-signup",
+    lastSignedIn: new Date(),
+  });
+  const user = await getUserByOpenId(openId);
+  const db = await getDb();
+  if (!db) return { success: true as const, providerId: null };
+  await db.insert(cleaners).values({
+    userId: user?.id ?? null,
+    name: data.name,
+    city: data.city,
+    bio: data.bio ?? null,
+    serviceTypes: data.serviceTypes,
+    priceBasic: data.priceBasic,
+    priceDeep: data.priceDeep ?? data.priceBasic * 1.6,
+    priceWeekly: data.priceWeekly ?? data.priceBasic * 2.7,
+    isAvailable: data.isAvailable ?? true,
+  });
+  return { success: true as const };
 }
 
 // ─── Bookings ─────────────────────────────────────────────────────────────────

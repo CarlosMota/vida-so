@@ -1,6 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
-import { getLoginUrl } from "@/const";
+import { notifyAuthChanged, useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -17,7 +16,7 @@ import { ChefHat, ShoppingCart, Sparkles, LayoutDashboard, Menu, X, LogOut, User
 import { useState } from "react";
 
 export default function Navbar() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, refreshAuth } = useAuth();
   const [, navigate] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const logout = trpc.auth.logout.useMutation();
@@ -25,15 +24,16 @@ export default function Navbar() {
   const handleLogout = async () => {
     try {
       await logoutReal();
+      await refreshAuth();
+      notifyAuthChanged();
       toast.success("Até logo!");
       navigate("/");
-      window.location.reload();
     } catch {
       // Fallback to the existing mock mutation path.
       logout.mutate();
+      notifyAuthChanged();
       toast.success("Até logo!");
       navigate("/");
-      window.location.reload();
     }
   };
 
@@ -117,14 +117,14 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <a href={getLoginUrl()}>
+                <Link href="/login">
                   <Button variant="ghost" size="sm">Entrar</Button>
-                </a>
-                <a href={getLoginUrl()}>
+                </Link>
+                <Link href="/signup">
                   <Button size="sm" className="gradient-brand text-white border-0 btn-scale">
                     Começar grátis
                   </Button>
-                </a>
+                </Link>
               </>
             )}
           </div>
@@ -171,11 +171,18 @@ export default function Navbar() {
                   </Button>
                 </>
               ) : (
-                <a href={getLoginUrl()} className="block">
-                  <Button className="w-full gradient-brand text-white border-0">
-                    Entrar / Cadastrar
-                  </Button>
-                </a>
+                <div className="space-y-2">
+                  <Link href="/login" className="block">
+                    <Button variant="outline" className="w-full">
+                      Entrar
+                    </Button>
+                  </Link>
+                  <Link href="/signup" className="block">
+                    <Button className="w-full gradient-brand text-white border-0">
+                      Cadastrar
+                    </Button>
+                  </Link>
+                </div>
               )}
             </div>
           </div>

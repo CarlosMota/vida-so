@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { createChefReal, createCleanerReal, getProviderBookingsReal } from "@/lib/trpc-real";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -18,9 +20,15 @@ import {
 } from "lucide-react";
 
 export default function ProviderPanel() {
-  const { isAuthenticated } = useAuth();
+  const useRealApi = import.meta.env.VITE_USE_REAL_API !== "false";
+  const { user, isAuthenticated } = useAuth();
   const [activeTab, setActiveTab] = useState<"overview" | "register" | "bookings">("overview");
   const [providerType, setProviderType] = useState<"chef" | "cleaner">("chef");
+  const [realBookings, setRealBookings] = useState<any[]>([]);
+  const [realBookingsLoading, setRealBookingsLoading] = useState(false);
+  const [providerError, setProviderError] = useState<string | null>(null);
+  const [createChefLoadingReal, setCreateChefLoadingReal] = useState(false);
+  const [createCleanerLoadingReal, setCreateCleanerLoadingReal] = useState(false);
 
   // Chef registration form
   const [chefName, setChefName] = useState("");
@@ -44,6 +52,48 @@ export default function ProviderPanel() {
   const SERVICE_OPTIONS = ["Limpeza básica", "Limpeza profunda", "Limpeza semanal", "Pós-obra", "Organização", "Higienização"];
 
   const [cleanerServices, setCleanerServices] = useState<string[]>([]);
+  const createChef = trpc.providers.createChef.useMutation({
+    onSuccess: () => {
+      toast.success("Cadastro de chef enviado para análise!");
+    },
+    onError: () => toast.error("Falha ao cadastrar chef"),
+  });
+  const createCleaner = trpc.providers.createCleaner.useMutation({
+    onSuccess: () => {
+      toast.success("Cadastro de profissional enviado para análise!");
+    },
+    onError: () => toast.error("Falha ao cadastrar profissional"),
+  });
+
+  const serviceTypeParam = providerType === "chef" ? "chef" : "cleaning";
+  const { data: mockProviderBookings, isLoading: loadingMockProviderBookings } = trpc.bookings.getProviderBookings.useQuery(
+    { providerId: user?.id ?? 0, serviceType: serviceTypeParam },
+    { enabled: !useRealApi && Boolean(user?.id) && activeTab === "bookings" },
+  );
+
+  useEffect(() => {
+    if (!useRealApi || !user?.id || activeTab !== "bookings") return;
+    let mounted = true;
+    setProviderError(null);
+    setRealBookingsLoading(true);
+
+    void getProviderBookingsReal({ providerId: user.id, serviceType: serviceTypeParam })
+      .then((rows) => {
+        if (mounted) setRealBookings(rows ?? []);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setRealBookings([]);
+        setProviderError("Não foi possível carregar agenda de prestador para este usuário.");
+      })
+      .finally(() => {
+        if (mounted) setRealBookingsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, serviceTypeParam, useRealApi, user?.id]);
 
   const toggleItem = (arr: string[], setArr: (v: string[]) => void, item: string) => {
     setArr(arr.includes(item) ? arr.filter((i) => i !== item) : [...arr, item]);
@@ -54,8 +104,31 @@ export default function ProviderPanel() {
       toast.error("Preencha os campos obrigatórios");
       return;
     }
-    // In a real app, this would call a tRPC mutation to insert into DB
-    toast.success("Cadastro de chef enviado para análise! Em breve entraremos em contato.");
+    const payload = {
+      name: chefName,
+      email: `${chefName.toLowerCase().replace(/\s+/g, ".")}@example.local`,
+      phone: "",
+      city: chefCity,
+      specialties: chefSpecialties,
+      cuisineTypes: chefCuisines,
+      pricePerPerson: Number(chefPrice),
+      bio: chefBio,
+      experience: Number(chefExperience) || 0,
+      providerType: "CHEF" as const,
+    };
+    if (!useRealApi) {
+      createChef.mutate(payload);
+      return;
+    }
+    setCreateChefLoadingReal(true);
+    try {
+      await createChefReal(payload);
+      toast.success("Cadastro de chef enviado para análise!");
+    } catch {
+      toast.error("Falha ao cadastrar chef");
+    } finally {
+      setCreateChefLoadingReal(false);
+    }
   };
 
   const handleRegisterCleaner = async () => {
@@ -63,7 +136,31 @@ export default function ProviderPanel() {
       toast.error("Preencha os campos obrigatórios");
       return;
     }
-    toast.success("Cadastro de profissional enviado para análise! Em breve entraremos em contato.");
+    const payload = {
+      name: cleanerName,
+      email: `${cleanerName.toLowerCase().replace(/\s+/g, ".")}@example.local`,
+      phone: "",
+      city: cleanerCity,
+      serviceTypes: cleanerServices,
+      priceBasic: Number(cleanerPriceBasic),
+      priceDeep: Number(cleanerPriceDeep),
+      priceWeekly: Number(cleanerPriceWeekly),
+      bio: cleanerBio,
+      providerType: "CLEANER" as const,
+    };
+    if (!useRealApi) {
+      createCleaner.mutate(payload);
+      return;
+    }
+    setCreateCleanerLoadingReal(true);
+    try {
+      await createCleanerReal(payload);
+      toast.success("Cadastro de profissional enviado para análise!");
+    } catch {
+      toast.error("Falha ao cadastrar profissional");
+    } finally {
+      setCreateCleanerLoadingReal(false);
+    }
   };
 
   if (!isAuthenticated) {
@@ -289,6 +386,7 @@ export default function ProviderPanel() {
                   <Button
                     className="w-full gradient-brand text-white border-0 btn-scale gap-2 mt-2"
                     onClick={handleRegisterChef}
+                    disabled={createChef.isPending || createChefLoadingReal}
                   >
                     <CheckCircle2 className="w-4 h-4" /> Enviar Cadastro
                   </Button>
@@ -347,6 +445,7 @@ export default function ProviderPanel() {
                   <Button
                     className="w-full bg-teal-600 hover:bg-teal-700 text-white border-0 btn-scale gap-2 mt-2"
                     onClick={handleRegisterCleaner}
+                    disabled={createCleaner.isPending || createCleanerLoadingReal}
                   >
                     <CheckCircle2 className="w-4 h-4" /> Enviar Cadastro
                   </Button>
@@ -370,19 +469,50 @@ export default function ProviderPanel() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-12 text-muted-foreground">
-                  <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p className="font-medium text-gray-600 mb-1">Nenhum agendamento ainda</p>
-                  <p className="text-sm">Após seu cadastro ser aprovado, os agendamentos aparecerão aqui.</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => setActiveTab("register")}
-                  >
-                    Cadastrar Serviço
-                  </Button>
-                </div>
+                {providerError ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    <p className="font-medium text-gray-700 mb-1">Sem acesso à agenda de prestador</p>
+                    <p className="text-sm">{providerError}</p>
+                  </div>
+                ) : (useRealApi ? realBookingsLoading : loadingMockProviderBookings) ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)}
+                  </div>
+                ) : (useRealApi ? realBookings : (mockProviderBookings ?? [])).length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Calendar className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p className="font-medium text-gray-600 mb-1">Nenhum agendamento ainda</p>
+                    <p className="text-sm">Após seu cadastro ser aprovado, os agendamentos aparecerão aqui.</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4"
+                      onClick={() => setActiveTab("register")}
+                    >
+                      Cadastrar Serviço
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(useRealApi ? realBookings : (mockProviderBookings ?? [])).map((booking: any) => (
+                      <div key={booking.id} className="border border-gray-100 rounded-xl p-4 bg-white">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-medium text-gray-900">
+                            {booking.serviceType === "chef" ? "Personal Chef" : "Limpeza"}
+                          </p>
+                          <Badge variant="outline">{booking.status}</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {new Date(booking.scheduledAt).toLocaleString("pt-BR")}
+                        </p>
+                        {booking.address && <p className="text-sm text-gray-700 mt-1">{booking.address}</p>}
+                        {booking.totalPrice != null && (
+                          <p className="text-sm font-semibold text-gray-800 mt-2">R$ {Number(booking.totalPrice).toFixed(2)}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

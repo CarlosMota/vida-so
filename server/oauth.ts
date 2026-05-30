@@ -19,6 +19,17 @@ function sanitizeReturnPath(path: unknown): string {
   return path;
 }
 
+function sanitizeOrigin(origin: unknown): string | null {
+  if (typeof origin !== "string") return null;
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
 export function registerOAuthRoutes(app: FastifyInstance) {
   app.get("/api/oauth/callback", async (req: FastifyRequest, res: FastifyReply) => {
     const code = getQueryParam(req, "code");
@@ -59,16 +70,24 @@ export function registerOAuthRoutes(app: FastifyInstance) {
       res.header("set-cookie", cookieHeader);
 
       // Parse state to extract returnPath if present
+      const defaultFrontendOrigin = sanitizeOrigin(process.env.FRONTEND_URL);
       let redirectTo = "/dashboard";
+      let redirectOrigin: string | null = defaultFrontendOrigin;
       try {
         const decodedState = Buffer.from(state, "base64").toString("utf8");
         const decoded = JSON.parse(decodedState);
         redirectTo = sanitizeReturnPath(decoded.returnPath);
+        redirectOrigin = sanitizeOrigin(decoded.origin) ?? defaultFrontendOrigin;
       } catch {
         // state is not our JSON format, use default
       }
-
-      res.redirect(redirectTo);
+      const finalRedirect = redirectOrigin ? `${redirectOrigin}${redirectTo}` : redirectTo;
+      console.info("[OAuth] Redirect computed", {
+        redirectOrigin,
+        redirectTo,
+        finalRedirect,
+      });
+      res.redirect(finalRedirect);
     } catch (error) {
       console.error("[OAuth] Callback failed", error);
       res.status(500).send({ error: "OAuth callback failed" });

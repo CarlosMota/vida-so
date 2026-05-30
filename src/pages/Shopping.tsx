@@ -41,7 +41,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export default function Shopping() {
   const { isAuthenticated } = useAuth();
-  const useRealApi = import.meta.env.VITE_USE_REAL_API === "true";
+  const useRealApi = import.meta.env.VITE_USE_REAL_API !== "false";
   const [selectedListId, setSelectedListId] = useState<number | null>(null);
   const [newListName, setNewListName] = useState("");
   const [newItem, setNewItem] = useState("");

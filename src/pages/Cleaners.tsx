@@ -91,7 +91,7 @@ function CleanerCard({ cleaner, onBook }: { cleaner: any; onBook: (c: any) => vo
 }
 
 export default function Cleaners() {
-  const useRealApi = import.meta.env.VITE_USE_REAL_API === "true";
+  const useRealApi = import.meta.env.VITE_USE_REAL_API !== "false";
   const { isAuthenticated } = useAuth();
   const [search, setSearch] = useState("");
   const [serviceFilter, setServiceFilter] = useState("all");

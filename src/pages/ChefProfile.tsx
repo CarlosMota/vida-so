@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 
 export default function ChefProfile() {
-  const useRealApi = import.meta.env.VITE_USE_REAL_API === "true";
+  const useRealApi = import.meta.env.VITE_USE_REAL_API !== "false";
   const { id } = useParams<{ id: string }>();
   const { isAuthenticated } = useAuth();
   const [, navigate] = useLocation();

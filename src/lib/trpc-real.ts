@@ -106,6 +106,105 @@ type TrpcRealDashboard = {
   };
 };
 
+type TrpcRealPreferences = {
+  preferences: {
+    save: {
+      mutate: (input: {
+        cuisineTypes?: string[];
+        dietaryRestrictions?: string[];
+        allergies?: string[];
+        monthlyBudget?: number;
+        preferredDeliveryTime?: string;
+        onboardingCompleted?: boolean;
+      }) => Promise<{ success: true }>;
+    };
+  };
+};
+
+type TrpcRealUsersProvidersAi = {
+  users: {
+    createCustomer: {
+      mutate: (input: {
+        name: string;
+        email: string;
+        phone?: string;
+        userType?: "CUSTOMER" | "CLIENT";
+      }) => Promise<{ success: true; userId: number | null }>;
+    };
+  };
+  providers: {
+    createChef: {
+      mutate: (input: {
+        name: string;
+        email: string;
+        phone?: string;
+        city: string;
+        specialties: string[];
+        cuisineTypes: string[];
+        pricePerPerson: number;
+        bio?: string;
+        experience?: number;
+        isAvailable?: boolean;
+        providerType?: "CHEF";
+      }) => Promise<{ success: true }>;
+    };
+    createCleaner: {
+      mutate: (input: {
+        name: string;
+        email: string;
+        phone?: string;
+        city: string;
+        serviceTypes: string[];
+        priceBasic: number;
+        priceDeep?: number;
+        priceWeekly?: number;
+        bio?: string;
+        isAvailable?: boolean;
+        providerType?: "CLEANER";
+      }) => Promise<{ success: true }>;
+    };
+  };
+  ai: {
+    suggestChef: {
+      mutate: (input: {
+        location: string;
+        peopleCount: number;
+        eventType?: string;
+        dietaryPreferences?: string[];
+        budget?: number;
+        desiredDate?: string;
+      }) => Promise<any>;
+    };
+    suggestCleaner: {
+      mutate: (input: {
+        location: string;
+        propertyType?: string;
+        roomCount?: number;
+        cleaningType: string;
+        desiredDate?: string;
+      }) => Promise<any>;
+    };
+    suggestShoppingItems: {
+      mutate: (input: {
+        mealPlan: string;
+        peopleCount: number;
+        dietaryPreferences?: string[];
+        budget?: number;
+      }) => Promise<any>;
+    };
+    generatePlan: {
+      mutate: (input: {
+        location: string;
+        peopleCount: number;
+        eventType?: string;
+        budget?: number;
+        cleaningType?: string;
+        desiredDate?: string;
+      }) => Promise<any>;
+    };
+  };
+};
+
 type TrpcRealShopping = {
   shopping: {
     getLists: {
@@ -157,6 +256,9 @@ type TrpcRealBookingsReviews = {
     };
     cancel: {
       mutate: (input: { bookingId: number }) => Promise<{ success: true }>;
+    };
+    getProviderBookings: {
+      query: (input: { providerId: number; serviceType: "chef" | "cleaning" }) => Promise<any[]>;
     };
   };
   reviews: {
@@ -301,4 +403,77 @@ export async function createReviewReal(input: {
 }) {
   const client = trpcReal as unknown as TrpcRealBookingsReviews;
   return client.reviews.create.mutate(input);
+}
+
+export async function getProviderBookingsReal(input: { providerId: number; serviceType: "chef" | "cleaning" }) {
+  const client = trpcReal as unknown as TrpcRealBookingsReviews;
+  return client.bookings.getProviderBookings.query(input);
+}
+
+export async function savePreferencesReal(input: {
+  cuisineTypes?: string[];
+  dietaryRestrictions?: string[];
+  allergies?: string[];
+  monthlyBudget?: number;
+  preferredDeliveryTime?: string;
+  onboardingCompleted?: boolean;
+}) {
+  const client = trpcReal as unknown as TrpcRealPreferences;
+  return client.preferences.save.mutate(input);
+}
+
+export async function createCustomerReal(input: {
+  name: string;
+  email: string;
+  phone?: string;
+  userType?: "CUSTOMER" | "CLIENT";
+}) {
+  const client = trpcReal as unknown as TrpcRealUsersProvidersAi;
+  return client.users.createCustomer.mutate(input);
+}
+
+export async function createChefReal(input: {
+  name: string;
+  email: string;
+  phone?: string;
+  city: string;
+  specialties: string[];
+  cuisineTypes: string[];
+  pricePerPerson: number;
+  bio?: string;
+  experience?: number;
+  isAvailable?: boolean;
+  providerType?: "CHEF";
+}) {
+  const client = trpcReal as unknown as TrpcRealUsersProvidersAi;
+  return client.providers.createChef.mutate(input);
+}
+
+export async function createCleanerReal(input: {
+  name: string;
+  email: string;
+  phone?: string;
+  city: string;
+  serviceTypes: string[];
+  priceBasic: number;
+  priceDeep?: number;
+  priceWeekly?: number;
+  bio?: string;
+  isAvailable?: boolean;
+  providerType?: "CLEANER";
+}) {
+  const client = trpcReal as unknown as TrpcRealUsersProvidersAi;
+  return client.providers.createCleaner.mutate(input);
+}
+
+export async function aiSuggestChefReal(input: {
+  location: string;
+  peopleCount: number;
+  eventType?: string;
+  dietaryPreferences?: string[];
+  budget?: number;
+  desiredDate?: string;
+}) {
+  const client = trpcReal as unknown as TrpcRealUsersProvidersAi;
+  return client.ai.suggestChef.mutate(input);
 }

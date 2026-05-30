@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { cancelBookingReal, createReviewReal, getBookingsListReal, getPreferencesReal, getShoppingListsReal } from "@/lib/trpc-real";
 import { Button } from "@/components/ui/button";
@@ -140,7 +139,7 @@ export default function Dashboard() {
   const [realShoppingLists, setRealShoppingLists] = useState<any[]>([]);
   const [realLoading, setRealLoading] = useState(false);
   const [cancelRealLoadingId, setCancelRealLoadingId] = useState<number | null>(null);
-  const useRealApi = import.meta.env.VITE_USE_REAL_API === "true";
+  const useRealApi = import.meta.env.VITE_USE_REAL_API !== "false";
 
   const { data: mockBookings, isLoading: loadingMockBookings } = trpc.bookings.list.useQuery(undefined, { enabled: isAuthenticated && !useRealApi });
   const { data: mockPrefs } = trpc.preferences.get.useQuery(undefined, { enabled: isAuthenticated && !useRealApi });
@@ -214,9 +213,9 @@ export default function Dashboard() {
           <LayoutDashboard className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
           <h2 className="text-2xl font-bold mb-2">Acesse seu Dashboard</h2>
           <p className="text-muted-foreground mb-6">Faça login para ver seus agendamentos e serviços.</p>
-          <a href={getLoginUrl("/dashboard")}>
+          <Link href="/login">
             <Button className="gradient-brand text-white border-0 btn-scale">Entrar</Button>
-          </a>
+          </Link>
         </div>
       </div>
     );

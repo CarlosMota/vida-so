@@ -135,11 +135,11 @@ export default function Home() {
                   </Button>
                 </Link>
               ) : (
-                <a href={getLoginUrl()}>
+                <Link href="/signup">
                   <Button size="lg" className="gradient-brand text-white border-0 btn-scale px-8 text-base gap-2">
                     Começar grátis <ArrowRight className="w-4 h-4" />
                   </Button>
-                </a>
+                </Link>
               )}
               <Link href="/chefs">
                 <Button size="lg" variant="outline" className="px-8 text-base gap-2 btn-scale">
@@ -147,6 +147,13 @@ export default function Home() {
                 </Button>
               </Link>
             </div>
+            {!isAuthenticated && (
+              <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                <Link href="/register/chef"><Button variant="outline" size="sm">Sou Chef</Button></Link>
+                <Link href="/register/cleaner"><Button variant="outline" size="sm">Sou Faxineira</Button></Link>
+                <a href={getLoginUrl()}><Button variant="ghost" size="sm">Já tenho conta</Button></a>
+              </div>
+            )}
 
             {/* Trust badges */}
             <div className="mt-12 flex flex-wrap justify-center gap-6 text-sm text-gray-500">

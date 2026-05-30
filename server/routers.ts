@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { providerProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
+import { aiRouter } from "./ai/ai.router";
 import {
   upsertUser,
   getUserByOpenId,
@@ -32,6 +33,9 @@ import {
   scheduleDelivery,
   createReview,
   getProviderReviews,
+  createCustomerProfile,
+  createChefProvider,
+  createCleanerProvider,
 } from "./db";
 
 // ─── Auth Router ──────────────────────────────────────────────────────────────
@@ -73,6 +77,77 @@ const preferencesRouter = router({
       await upsertUserPreferences(ctx.user.id, input);
       return { success: true };
     }),
+});
+
+const usersRouter = router({
+  createCustomer: publicProcedure
+    .input(z.object({
+      name: z.string().min(2),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      userType: z.enum(["CUSTOMER", "CLIENT"]).default("CUSTOMER"),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await createCustomerProfile({
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+      });
+      return { ...result, userType: input.userType };
+    }),
+});
+
+const providersRouter = router({
+  createChef: publicProcedure
+    .input(z.object({
+      name: z.string().min(2),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      city: z.string().min(2),
+      specialties: z.array(z.string()).default([]),
+      cuisineTypes: z.array(z.string()).default([]),
+      pricePerPerson: z.number().positive(),
+      bio: z.string().optional(),
+      experience: z.number().int().nonnegative().optional(),
+      isAvailable: z.boolean().optional(),
+      providerType: z.literal("CHEF").default("CHEF"),
+    }))
+    .mutation(async ({ input }) => {
+      const { providerType: _providerType, ...payload } = input;
+      return createChefProvider(payload);
+    }),
+  createCleaner: publicProcedure
+    .input(z.object({
+      name: z.string().min(2),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      city: z.string().min(2),
+      serviceTypes: z.array(z.string()).default([]),
+      priceBasic: z.number().positive(),
+      priceDeep: z.number().positive().optional(),
+      priceWeekly: z.number().positive().optional(),
+      bio: z.string().optional(),
+      isAvailable: z.boolean().optional(),
+      providerType: z.literal("CLEANER").default("CLEANER"),
+    }))
+    .mutation(async ({ input }) => {
+      const { providerType: _providerType, ...payload } = input;
+      return createCleanerProvider(payload);
+    }),
+  getChefs: publicProcedure
+    .input(z.object({
+      city: z.string().optional(),
+      cuisine: z.string().optional(),
+      maxPrice: z.number().optional(),
+      minRating: z.number().optional(),
+    }).optional())
+    .query(async ({ input }) => listChefs(input ?? {})),
+  getCleaners: publicProcedure
+    .input(z.object({
+      city: z.string().optional(),
+      serviceType: z.string().optional(),
+    }).optional())
+    .query(async ({ input }) => listCleaners(input ?? {})),
 });
 
 // ─── Chefs Router ─────────────────────────────────────────────────────────────
@@ -380,6 +455,9 @@ const reviewsRouter = router({
 export const appRouter = router({
   system: systemRouter,
   auth: authRouter,
+  users: usersRouter,
+  providers: providersRouter,
+  ai: aiRouter,
   preferences: preferencesRouter,
   chefs: chefsRouter,
   cleaners: cleanersRouter,

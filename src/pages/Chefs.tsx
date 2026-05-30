@@ -78,7 +78,7 @@ function ChefCard({ chef, matchScore }: { chef: any; matchScore?: number }) {
 }
 
 export default function Chefs() {
-  const useRealApi = import.meta.env.VITE_USE_REAL_API === "true";
+  const useRealApi = import.meta.env.VITE_USE_REAL_API !== "false";
   const { isAuthenticated } = useAuth();
   const [search, setSearch] = useState("");
   const [cuisine, setCuisine] = useState("all");

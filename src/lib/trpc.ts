@@ -294,6 +294,8 @@ let reviews = [
   },
 ];
 
+let customerSignups: Array<{ id: number; name: string; email: string; phone?: string }> = [];
+
 const nextId = (rows: Array<{ id: number }>) => Math.max(0, ...rows.map((row) => row.id)) + 1;
 
 const endpoint = <TInput, TData>(resolver: (input: TInput) => TData) => ({
@@ -504,5 +506,80 @@ export const trpc = {
     listByProvider: endpoint((input: any) =>
       reviews.filter((review) => review.providerId === input?.providerId && review.providerType === input?.providerType),
     ),
+  },
+  users: {
+    createCustomer: mutation((input: any) => {
+      customerSignups = [
+        { id: nextId(customerSignups), name: input.name, email: input.email, phone: input.phone },
+        ...customerSignups,
+      ];
+      return { success: true, userId: customerSignups[0].id };
+    }),
+  },
+  providers: {
+    createChef: mutation((input: any) => {
+      chefs.unshift({
+        id: nextId(chefs),
+        name: input.name,
+        bio: input.bio ?? "",
+        photoUrl: "",
+        specialties: input.specialties ?? [],
+        cuisineTypes: input.cuisineTypes ?? [],
+        pricePerPerson: input.pricePerPerson ?? 100,
+        city: input.city,
+        rating: 0,
+        totalReviews: 0,
+        experience: input.experience ?? 0,
+        isAvailable: input.isAvailable ?? true,
+      });
+      return { success: true };
+    }),
+    createCleaner: mutation((input: any) => {
+      cleaners.unshift({
+        id: nextId(cleaners),
+        name: input.name,
+        bio: input.bio ?? "",
+        photoUrl: "",
+        serviceTypes: input.serviceTypes ?? [],
+        priceBasic: input.priceBasic ?? 150,
+        priceDeep: input.priceDeep ?? 250,
+        priceWeekly: input.priceWeekly ?? 400,
+        city: input.city,
+        rating: 0,
+        totalReviews: 0,
+        isAvailable: input.isAvailable ?? true,
+      });
+      return { success: true };
+    }),
+    getChefs: endpoint((input: any) => filterChefs(input)),
+    getCleaners: endpoint((input: any) => filterCleaners(input)),
+  },
+  ai: {
+    suggestChef: mutation((input: any) => ({
+      recommendedChef: chefs[0]?.name ?? "Chef Demo",
+      reason: `Sugestão mock para ${input?.location ?? "sua região"}.`,
+      estimatedCost: input?.budget ? input.budget * 0.7 : 180,
+      suggestedShoppingItems: ["Arroz", "Frango", "Tomate"],
+    })),
+    suggestCleaner: mutation((input: any) => ({
+      recommendedCleaner: cleaners[0]?.name ?? "Profissional Demo",
+      reason: `Sugestão mock para ${input?.cleaningType ?? "limpeza geral"}.`,
+      estimatedDurationHours: 3,
+      estimatedPrice: 180,
+      checklist: ["Pisos", "Banheiros", "Cozinha"],
+    })),
+    suggestShoppingItems: mutation((input: any) => ({
+      items: [
+        { name: "Arroz", quantity: "1", unit: "kg", estimatedPrice: 8 },
+        { name: "Feijão", quantity: "1", unit: "kg", estimatedPrice: 9 },
+      ],
+      reason: `Lista mock para ${input?.mealPlan ?? "refeição"}.`,
+    })),
+    generatePlan: mutation((input: any) => ({
+      chef: { name: chefs[0]?.name ?? "Chef Demo", estimatedCost: 220 },
+      cleaner: { name: cleaners[0]?.name ?? "Profissional Demo", estimatedCost: 170 },
+      shopping: { estimatedCost: 130 },
+      summary: `Plano mock para ${input?.location ?? "local"} com ${input?.peopleCount ?? 1} pessoa(s).`,
+    })),
   },
 };
