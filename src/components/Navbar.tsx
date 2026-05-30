@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { trpc } from "@/lib/trpc";
+import { logoutReal } from "@/lib/trpc-real";
 import { toast } from "sonner";
 import { ChefHat, ShoppingCart, Sparkles, LayoutDashboard, Menu, X, LogOut, User, Settings } from "lucide-react";
 import { useState } from "react";
@@ -19,12 +20,22 @@ export default function Navbar() {
   const { user, isAuthenticated } = useAuth();
   const [, navigate] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const logout = trpc.auth.logout.useMutation({
-    onSuccess: () => {
+  const logout = trpc.auth.logout.useMutation();
+
+  const handleLogout = async () => {
+    try {
+      await logoutReal();
       toast.success("Até logo!");
       navigate("/");
-    },
-  });
+      window.location.reload();
+    } catch {
+      // Fallback to the existing mock mutation path.
+      logout.mutate();
+      toast.success("Até logo!");
+      navigate("/");
+      window.location.reload();
+    }
+  };
 
   const navLinks = [
     { href: "/chefs", label: "Personal Chefs", icon: ChefHat },
@@ -95,7 +106,9 @@ export default function Navbar() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-destructive cursor-pointer"
-                      onClick={() => logout.mutate()}
+                      onClick={() => {
+                        void handleLogout();
+                      }}
                     >
                       <LogOut className="w-4 h-4 mr-2" /> Sair
                     </DropdownMenuItem>
@@ -149,7 +162,10 @@ export default function Navbar() {
                   <Button
                     variant="ghost"
                     className="w-full justify-start gap-2 text-destructive"
-                    onClick={() => { logout.mutate(); setMobileOpen(false); }}
+                    onClick={() => {
+                      void handleLogout();
+                      setMobileOpen(false);
+                    }}
                   >
                     <LogOut className="w-4 h-4" /> Sair
                   </Button>

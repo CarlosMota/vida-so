@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { createBookingReal, getCleanersListReal } from "@/lib/trpc-real";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -90,6 +91,7 @@ function CleanerCard({ cleaner, onBook }: { cleaner: any; onBook: (c: any) => vo
 }
 
 export default function Cleaners() {
+  const useRealApi = import.meta.env.VITE_USE_REAL_API === "true";
   const { isAuthenticated } = useAuth();
   const [search, setSearch] = useState("");
   const [serviceFilter, setServiceFilter] = useState("all");
@@ -99,10 +101,41 @@ export default function Cleaners() {
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
   const [booked, setBooked] = useState(false);
+  const [realCleaners, setRealCleaners] = useState<any[] | undefined>(undefined);
+  const [realLoading, setRealLoading] = useState(false);
+  const [bookingRealLoading, setBookingRealLoading] = useState(false);
 
   const { data: cleaners, isLoading } = trpc.cleaners.list.useQuery(
-    { serviceType: serviceFilter !== "all" ? serviceFilter : undefined }
+    { serviceType: serviceFilter !== "all" ? serviceFilter : undefined },
+    { enabled: !useRealApi }
   );
+
+  useEffect(() => {
+    if (!useRealApi) return;
+
+    let mounted = true;
+    setRealLoading(true);
+
+    void getCleanersListReal({
+      serviceType: serviceFilter !== "all" ? serviceFilter : undefined,
+    })
+      .then((data) => {
+        if (mounted) setRealCleaners(data ?? []);
+      })
+      .catch(() => {
+        if (mounted) setRealCleaners([]);
+      })
+      .finally(() => {
+        if (mounted) setRealLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [useRealApi, serviceFilter]);
+
+  const cleanersData = useRealApi ? realCleaners : cleaners;
+  const cleanersLoading = useRealApi ? realLoading : isLoading;
 
   const utils = trpc.useUtils();
   const createBooking = trpc.bookings.create.useMutation({
@@ -115,7 +148,7 @@ export default function Cleaners() {
     onError: () => toast.error("Erro ao agendar. Tente novamente."),
   });
 
-  const filtered = cleaners?.filter((c: any) =>
+  const filtered = cleanersData?.filter((c: any) =>
     !search || c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.city?.toLowerCase().includes(search.toLowerCase())
   ) ?? [];
@@ -128,7 +161,20 @@ export default function Cleaners() {
       window.location.href = getLoginUrl("/limpeza");
       return;
     }
-    createBooking.mutate({
+    if (!useRealApi) {
+      createBooking.mutate({
+        serviceType: "cleaning",
+        providerId: selectedCleaner.id,
+        scheduledAt,
+        notes,
+        totalPrice: price,
+        address,
+        serviceSubtype: selectedService?.label,
+      });
+      return;
+    }
+    setBookingRealLoading(true);
+    void createBookingReal({
       serviceType: "cleaning",
       providerId: selectedCleaner.id,
       scheduledAt,
@@ -136,7 +182,14 @@ export default function Cleaners() {
       totalPrice: price,
       address,
       serviceSubtype: selectedService?.label,
-    });
+    })
+      .then(() => {
+        toast.success("Limpeza agendada com sucesso!");
+        setSelectedCleaner(null);
+        setBooked(true);
+      })
+      .catch(() => toast.error("Erro ao agendar. Tente novamente."))
+      .finally(() => setBookingRealLoading(false));
   };
 
   return (
@@ -194,7 +247,7 @@ export default function Cleaners() {
         </div>
 
         {/* Results */}
-        {isLoading ? (
+        {cleanersLoading ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Array.from({ length: 5 }).map((_, i) => (
               <Card key={i} className="border-0 shadow-md overflow-hidden">
@@ -292,10 +345,10 @@ export default function Cleaners() {
             <Button variant="outline" onClick={() => setSelectedCleaner(null)}>Cancelar</Button>
             <Button
               className="bg-teal-600 hover:bg-teal-700 text-white border-0 btn-scale"
-              disabled={!scheduledAt || !address || createBooking.isPending}
+              disabled={!scheduledAt || !address || createBooking.isPending || bookingRealLoading}
               onClick={handleBook}
             >
-              {createBooking.isPending ? "Agendando..." : "Confirmar"}
+              {(createBooking.isPending || bookingRealLoading) ? "Agendando..." : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>

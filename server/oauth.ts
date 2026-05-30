@@ -68,7 +68,7 @@ export function registerOAuthRoutes(app: FastifyInstance) {
         // state is not our JSON format, use default
       }
 
-      res.redirect(302, redirectTo);
+      res.redirect(redirectTo);
     } catch (error) {
       console.error("[OAuth] Callback failed", error);
       res.status(500).send({ error: "OAuth callback failed" });

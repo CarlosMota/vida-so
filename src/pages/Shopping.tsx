@@ -1,7 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
+import {
+  addShoppingItemReal,
+  createShoppingListReal,
+  getShoppingItemsReal,
+  getShoppingListsReal,
+  removeShoppingItemReal,
+  scheduleShoppingDeliveryReal,
+  suggestShoppingItemsReal,
+  toggleShoppingItemReal,
+} from "@/lib/trpc-real";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +41,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export default function Shopping() {
   const { isAuthenticated } = useAuth();
+  const useRealApi = import.meta.env.VITE_USE_REAL_API === "true";
   const [selectedListId, setSelectedListId] = useState<number | null>(null);
   const [newListName, setNewListName] = useState("");
   const [newItem, setNewItem] = useState("");
@@ -41,12 +52,20 @@ export default function Shopping() {
   const [deliveryAt, setDeliveryAt] = useState("");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [realLists, setRealLists] = useState<any[]>([]);
+  const [realItems, setRealItems] = useState<any[]>([]);
+  const [loadingRealLists, setLoadingRealLists] = useState(false);
+  const [loadingRealItems, setLoadingRealItems] = useState(false);
+  const [creatingListReal, setCreatingListReal] = useState(false);
+  const [addingItemReal, setAddingItemReal] = useState(false);
+  const [schedulingReal, setSchedulingReal] = useState(false);
+  const [suggestingReal, setSuggestingReal] = useState(false);
 
   const utils = trpc.useUtils();
-  const { data: lists, isLoading: loadingLists } = trpc.shopping.getLists.useQuery(undefined, { enabled: isAuthenticated });
-  const { data: items, isLoading: loadingItems } = trpc.shopping.getItems.useQuery(
+  const { data: mockLists, isLoading: loadingMockLists } = trpc.shopping.getLists.useQuery(undefined, { enabled: isAuthenticated && !useRealApi });
+  const { data: mockItems, isLoading: loadingMockItems } = trpc.shopping.getItems.useQuery(
     { listId: selectedListId! },
-    { enabled: !!selectedListId }
+    { enabled: !!selectedListId && !useRealApi }
   );
 
   const createList = trpc.shopping.createList.useMutation({
@@ -87,6 +106,101 @@ export default function Shopping() {
     onError: () => { toast.error("Erro ao gerar sugestões"); setAiLoading(false); },
   });
 
+  async function refreshListsReal() {
+    const lists = await getShoppingListsReal();
+    setRealLists(lists ?? []);
+  }
+
+  async function refreshItemsReal(listId: number) {
+    const items = await getShoppingItemsReal(listId);
+    setRealItems(items ?? []);
+  }
+
+  async function handleCreateList() {
+    if (!newListName) return;
+    if (!useRealApi) {
+      createList.mutate({ name: newListName });
+      return;
+    }
+    setCreatingListReal(true);
+    try {
+      await createShoppingListReal({ name: newListName });
+      await refreshListsReal();
+      setNewListName("");
+      toast.success("Lista criada!");
+    } catch {
+      toast.error("Erro ao criar lista");
+    } finally {
+      setCreatingListReal(false);
+    }
+  }
+
+  async function handleAddItem() {
+    if (!newItem || !selectedListId) return;
+    if (!useRealApi) {
+      addItem.mutate({ listId: selectedListId, name: newItem, quantity: newQty, unit: newUnit });
+      return;
+    }
+    setAddingItemReal(true);
+    try {
+      await addShoppingItemReal({ listId: selectedListId, name: newItem, quantity: newQty, unit: newUnit });
+      await refreshItemsReal(selectedListId);
+      setNewItem("");
+      setNewQty("1");
+    } catch {
+      toast.error("Erro ao adicionar item");
+    } finally {
+      setAddingItemReal(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!useRealApi || !isAuthenticated) return;
+    let mounted = true;
+    async function loadLists() {
+      setLoadingRealLists(true);
+      try {
+        const lists = await getShoppingListsReal();
+        if (!mounted) return;
+        setRealLists(lists ?? []);
+      } catch {
+        if (!mounted) return;
+        toast.error("Falha ao carregar listas reais");
+      } finally {
+        if (mounted) setLoadingRealLists(false);
+      }
+    }
+    loadLists();
+    return () => {
+      mounted = false;
+    };
+  }, [isAuthenticated, useRealApi]);
+
+  useEffect(() => {
+    if (!useRealApi || !isAuthenticated || !selectedListId) {
+      setRealItems([]);
+      return;
+    }
+    let mounted = true;
+    async function loadItems() {
+      setLoadingRealItems(true);
+      try {
+        const items = await getShoppingItemsReal(selectedListId);
+        if (!mounted) return;
+        setRealItems(items ?? []);
+      } catch {
+        if (!mounted) return;
+        toast.error("Falha ao carregar itens reais");
+      } finally {
+        if (mounted) setLoadingRealItems(false);
+      }
+    }
+    loadItems();
+    return () => {
+      mounted = false;
+    };
+  }, [isAuthenticated, selectedListId, useRealApi]);
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-background">
@@ -106,7 +220,12 @@ export default function Shopping() {
     );
   }
 
-  const selectedList = lists?.find((l: any) => l.id === selectedListId);
+  const lists = useRealApi ? realLists : (mockLists ?? []);
+  const items = useRealApi ? realItems : (mockItems ?? []);
+  const loadingLists = useRealApi ? loadingRealLists : loadingMockLists;
+  const loadingItems = useRealApi ? loadingRealItems : loadingMockItems;
+
+  const selectedList = lists.find((l: any) => l.id === selectedListId);
   const checkedCount = items?.filter((i: any) => i.checked).length ?? 0;
   const totalEstimate = items?.reduce((sum: number, i: any) => sum + (i.estimatedPrice ?? 0) * parseFloat(i.quantity ?? "1"), 0) ?? 0;
 
@@ -144,14 +263,14 @@ export default function Shopping() {
                     placeholder="Nome da lista..."
                     value={newListName}
                     onChange={(e) => setNewListName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && newListName && createList.mutate({ name: newListName })}
+                    onKeyDown={(e) => e.key === "Enter" && newListName && handleCreateList()}
                     className="text-sm"
                   />
                   <Button
                     size="icon"
                     className="shrink-0 bg-orange-500 hover:bg-orange-600 text-white border-0"
-                    disabled={!newListName || createList.isPending}
-                    onClick={() => createList.mutate({ name: newListName })}
+                    disabled={!newListName || createList.isPending || creatingListReal}
+                    onClick={handleCreateList}
                   >
                     <Plus className="w-4 h-4" />
                   </Button>
@@ -227,7 +346,7 @@ export default function Shopping() {
                         onChange={(e) => setNewItem(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && newItem && selectedListId) {
-                            addItem.mutate({ listId: selectedListId, name: newItem, quantity: newQty, unit: newUnit });
+                            handleAddItem();
                           }
                         }}
                         className="flex-1"
@@ -246,8 +365,8 @@ export default function Shopping() {
                       />
                       <Button
                         className="bg-orange-500 hover:bg-orange-600 text-white border-0 shrink-0"
-                        disabled={!newItem || addItem.isPending}
-                        onClick={() => addItem.mutate({ listId: selectedListId!, name: newItem, quantity: newQty, unit: newUnit })}
+                        disabled={!newItem || addItem.isPending || addingItemReal}
+                        onClick={handleAddItem}
                       >
                         <Plus className="w-4 h-4" />
                       </Button>
@@ -271,10 +390,39 @@ export default function Shopping() {
                       />
                       <Button
                         className="gradient-brand text-white border-0 btn-scale gap-2 shrink-0"
-                        disabled={aiLoading || suggestItems.isPending}
-                        onClick={() => {
+                        disabled={aiLoading || suggestItems.isPending || suggestingReal}
+                        onClick={async () => {
                           setAiLoading(true);
-                          suggestItems.mutate({ context: aiContext || "compras semanais básicas" });
+                          if (!useRealApi) {
+                            suggestItems.mutate({ context: aiContext || "compras semanais básicas" });
+                            return;
+                          }
+                          if (!selectedListId) {
+                            setAiLoading(false);
+                            toast.error("Selecione uma lista antes");
+                            return;
+                          }
+                          setSuggestingReal(true);
+                          try {
+                            const suggestions = await suggestShoppingItemsReal({ context: aiContext || "compras semanais básicas" });
+                            for (const item of suggestions ?? []) {
+                              await addShoppingItemReal({
+                                listId: selectedListId,
+                                name: item.name,
+                                quantity: item.quantity,
+                                unit: item.unit,
+                                estimatedPrice: item.estimatedPrice,
+                                category: item.category,
+                              });
+                            }
+                            await refreshItemsReal(selectedListId);
+                            toast.success(`${(suggestions ?? []).length} itens sugeridos pela IA adicionados!`);
+                          } catch {
+                            toast.error("Erro ao gerar sugestões");
+                          } finally {
+                            setSuggestingReal(false);
+                            setAiLoading(false);
+                          }
                         }}
                       >
                         {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
@@ -303,7 +451,18 @@ export default function Shopping() {
                       >
                         <Checkbox
                           checked={item.checked}
-                          onCheckedChange={(checked) => toggleItem.mutate({ itemId: item.id, checked: !!checked })}
+                          onCheckedChange={async (checked) => {
+                            if (!useRealApi) {
+                              toggleItem.mutate({ itemId: item.id, checked: !!checked });
+                              return;
+                            }
+                            try {
+                              await toggleShoppingItemReal({ itemId: item.id, checked: !!checked });
+                              if (selectedListId) await refreshItemsReal(selectedListId);
+                            } catch {
+                              toast.error("Erro ao atualizar item");
+                            }
+                          }}
                           className="shrink-0"
                         />
                         <div className="flex-1 min-w-0">
@@ -324,7 +483,18 @@ export default function Shopping() {
                           variant="ghost"
                           size="icon"
                           className="w-7 h-7 text-muted-foreground hover:text-destructive shrink-0"
-                          onClick={() => removeItem.mutate({ itemId: item.id })}
+                          onClick={async () => {
+                            if (!useRealApi) {
+                              removeItem.mutate({ itemId: item.id });
+                              return;
+                            }
+                            try {
+                              await removeShoppingItemReal({ itemId: item.id });
+                              if (selectedListId) await refreshItemsReal(selectedListId);
+                            } catch {
+                              toast.error("Erro ao remover item");
+                            }
+                          }}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
@@ -378,10 +548,26 @@ export default function Shopping() {
             <Button variant="outline" onClick={() => setScheduleOpen(false)}>Cancelar</Button>
             <Button
               className="bg-orange-500 hover:bg-orange-600 text-white border-0 btn-scale"
-              disabled={!deliveryAt || !deliveryAddress || schedule.isPending}
-              onClick={() => schedule.mutate({ listId: selectedListId!, deliveryAt, deliveryAddress })}
+              disabled={!deliveryAt || !deliveryAddress || schedule.isPending || schedulingReal}
+              onClick={async () => {
+                if (!useRealApi) {
+                  schedule.mutate({ listId: selectedListId!, deliveryAt, deliveryAddress });
+                  return;
+                }
+                setSchedulingReal(true);
+                try {
+                  await scheduleShoppingDeliveryReal({ listId: selectedListId!, deliveryAt, deliveryAddress });
+                  await refreshListsReal();
+                  setScheduleOpen(false);
+                  toast.success("Entrega agendada com sucesso!");
+                } catch {
+                  toast.error("Erro ao agendar entrega");
+                } finally {
+                  setSchedulingReal(false);
+                }
+              }}
             >
-              {schedule.isPending ? "Agendando..." : "Confirmar Entrega"}
+              {(schedule.isPending || schedulingReal) ? "Agendando..." : "Confirmar Entrega"}
             </Button>
           </DialogFooter>
         </DialogContent>

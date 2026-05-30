@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { getChefsListReal, getChefsMatchReal } from "@/lib/trpc-real";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -77,24 +78,64 @@ function ChefCard({ chef, matchScore }: { chef: any; matchScore?: number }) {
 }
 
 export default function Chefs() {
+  const useRealApi = import.meta.env.VITE_USE_REAL_API === "true";
   const { isAuthenticated } = useAuth();
   const [search, setSearch] = useState("");
   const [cuisine, setCuisine] = useState("all");
   const [maxPrice, setMaxPrice] = useState("all");
   const [useAI, setUseAI] = useState(false);
+  const [realChefs, setRealChefs] = useState<any[] | undefined>(undefined);
+  const [realLoading, setRealLoading] = useState(false);
 
   const { data: allChefs, isLoading: loadingAll } = trpc.chefs.list.useQuery(
     { cuisine: cuisine !== "all" ? cuisine : undefined, maxPrice: maxPrice !== "all" ? parseInt(maxPrice) : undefined },
-    { enabled: !useAI }
+    { enabled: !useAI && !useRealApi }
   );
 
   const { data: matchedChefs, isLoading: loadingMatch } = trpc.chefs.match.useQuery(
     undefined,
-    { enabled: useAI && isAuthenticated }
+    { enabled: useAI && isAuthenticated && !useRealApi }
   );
 
-  const isLoading = useAI ? loadingMatch : loadingAll;
-  const chefs = useAI ? matchedChefs : allChefs;
+  useEffect(() => {
+    if (!useRealApi) return;
+
+    let mounted = true;
+    setRealLoading(true);
+
+    const run = async () => {
+      try {
+        if (useAI) {
+          if (!isAuthenticated) {
+            if (mounted) setRealChefs([]);
+            return;
+          }
+          const data = await getChefsMatchReal();
+          if (mounted) setRealChefs(data ?? []);
+          return;
+        }
+
+        const data = await getChefsListReal({
+          cuisine: cuisine !== "all" ? cuisine : undefined,
+          maxPrice: maxPrice !== "all" ? parseInt(maxPrice) : undefined,
+        });
+        if (mounted) setRealChefs(data ?? []);
+      } catch {
+        if (mounted) setRealChefs([]);
+      } finally {
+        if (mounted) setRealLoading(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      mounted = false;
+    };
+  }, [useRealApi, useAI, isAuthenticated, cuisine, maxPrice]);
+
+  const isLoading = useRealApi ? realLoading : useAI ? loadingMatch : loadingAll;
+  const chefs = useRealApi ? realChefs : useAI ? matchedChefs : allChefs;
 
   const filtered = chefs?.filter((c: any) =>
     !search || c.name.toLowerCase().includes(search.toLowerCase()) ||

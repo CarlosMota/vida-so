@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { cancelBookingReal, createReviewReal, getBookingsListReal, getPreferencesReal, getShoppingListsReal } from "@/lib/trpc-real";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -32,9 +33,20 @@ const SERVICE_CONFIG = {
   shopping: { label: "Compras", icon: ShoppingCart, color: "text-orange-600 bg-orange-50" },
 };
 
-function ReviewDialog({ booking, onClose }: { booking: any; onClose: () => void }) {
+function ReviewDialog({
+  booking,
+  onClose,
+  useRealApi,
+  onSubmitted,
+}: {
+  booking: any;
+  onClose: () => void;
+  useRealApi: boolean;
+  onSubmitted: () => Promise<void> | void;
+}) {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
+  const [submittingReal, setSubmittingReal] = useState(false);
   const utils = trpc.useUtils();
 
   const createReview = trpc.reviews.create.useMutation({
@@ -80,19 +92,39 @@ function ReviewDialog({ booking, onClose }: { booking: any; onClose: () => void 
         <Button variant="outline" onClick={onClose}>Cancelar</Button>
         <Button
           className="gradient-brand text-white border-0"
-          disabled={createReview.isPending}
-          onClick={() => {
+          disabled={createReview.isPending || submittingReal}
+          onClick={async () => {
             if (!booking.providerId) return;
-            createReview.mutate({
-              bookingId: booking.id,
-              providerType: booking.serviceType === "chef" ? "chef" : "cleaner",
-              providerId: booking.providerId,
-              rating,
-              comment,
-            });
+            if (!useRealApi) {
+              createReview.mutate({
+                bookingId: booking.id,
+                providerType: booking.serviceType === "chef" ? "chef" : "cleaner",
+                providerId: booking.providerId,
+                rating,
+                comment,
+              });
+              return;
+            }
+            setSubmittingReal(true);
+            try {
+              await createReviewReal({
+                bookingId: booking.id,
+                providerType: booking.serviceType === "chef" ? "chef" : "cleaner",
+                providerId: booking.providerId,
+                rating,
+                comment,
+              });
+              toast.success("Avaliação enviada!");
+              await onSubmitted();
+              onClose();
+            } catch {
+              toast.error("Erro ao enviar avaliação");
+            } finally {
+              setSubmittingReal(false);
+            }
           }}
         >
-          {createReview.isPending ? "Enviando..." : "Enviar Avaliação"}
+          {(createReview.isPending || submittingReal) ? "Enviando..." : "Enviar Avaliação"}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -103,15 +135,62 @@ export default function Dashboard() {
   const { user, isAuthenticated, loading } = useAuth();
   const [, navigate] = useLocation();
   const [reviewBooking, setReviewBooking] = useState<any>(null);
+  const [realBookings, setRealBookings] = useState<any[]>([]);
+  const [realPrefs, setRealPrefs] = useState<any | null>(null);
+  const [realShoppingLists, setRealShoppingLists] = useState<any[]>([]);
+  const [realLoading, setRealLoading] = useState(false);
+  const [cancelRealLoadingId, setCancelRealLoadingId] = useState<number | null>(null);
+  const useRealApi = import.meta.env.VITE_USE_REAL_API === "true";
 
-  const { data: bookings, isLoading: loadingBookings } = trpc.bookings.list.useQuery(undefined, { enabled: isAuthenticated });
-  const { data: prefs } = trpc.preferences.get.useQuery(undefined, { enabled: isAuthenticated });
-  const { data: shoppingLists } = trpc.shopping.getLists.useQuery(undefined, { enabled: isAuthenticated });
+  const { data: mockBookings, isLoading: loadingMockBookings } = trpc.bookings.list.useQuery(undefined, { enabled: isAuthenticated && !useRealApi });
+  const { data: mockPrefs } = trpc.preferences.get.useQuery(undefined, { enabled: isAuthenticated && !useRealApi });
+  const { data: mockShoppingLists } = trpc.shopping.getLists.useQuery(undefined, { enabled: isAuthenticated && !useRealApi });
 
   const utils = trpc.useUtils();
   const cancelBooking = trpc.bookings.cancel.useMutation({
     onSuccess: () => { toast.success("Agendamento cancelado"); utils.bookings.list.invalidate(); },
   });
+
+  useEffect(() => {
+    if (!useRealApi || !isAuthenticated) return;
+    let mounted = true;
+
+    async function loadDashboardRealData() {
+      setRealLoading(true);
+      try {
+        const [bookingsData, prefsData, shoppingData] = await Promise.all([
+          getBookingsListReal(),
+          getPreferencesReal(),
+          getShoppingListsReal(),
+        ]);
+        if (!mounted) return;
+        setRealBookings(bookingsData ?? []);
+        setRealPrefs(prefsData ?? null);
+        setRealShoppingLists(shoppingData ?? []);
+      } catch {
+        if (!mounted) return;
+        toast.error("Falha ao carregar dados reais do dashboard");
+      } finally {
+        if (mounted) setRealLoading(false);
+      }
+    }
+
+    loadDashboardRealData();
+    return () => {
+      mounted = false;
+    };
+  }, [isAuthenticated, useRealApi]);
+
+  async function refreshDashboardRealData() {
+    const [bookingsData, prefsData, shoppingData] = await Promise.all([
+      getBookingsListReal(),
+      getPreferencesReal(),
+      getShoppingListsReal(),
+    ]);
+    setRealBookings(bookingsData ?? []);
+    setRealPrefs(prefsData ?? null);
+    setRealShoppingLists(shoppingData ?? []);
+  }
 
   if (loading) {
     return (
@@ -143,9 +222,14 @@ export default function Dashboard() {
     );
   }
 
-  const upcoming = bookings?.filter((b: any) => ["pending", "confirmed"].includes(b.status) && new Date(b.scheduledAt) > new Date()) ?? [];
-  const completed = bookings?.filter((b: any) => b.status === "completed") ?? [];
-  const totalSpent = bookings?.filter((b: any) => b.status === "completed").reduce((sum: number, b: any) => sum + (b.totalPrice ?? 0), 0) ?? 0;
+  const bookings = useRealApi ? realBookings : (mockBookings ?? []);
+  const prefs = useRealApi ? realPrefs : mockPrefs;
+  const shoppingLists = useRealApi ? realShoppingLists : (mockShoppingLists ?? []);
+  const loadingBookings = useRealApi ? realLoading : loadingMockBookings;
+
+  const upcoming = bookings.filter((b: any) => ["pending", "confirmed"].includes(b.status) && new Date(b.scheduledAt) > new Date());
+  const completed = bookings.filter((b: any) => b.status === "completed");
+  const totalSpent = bookings.filter((b: any) => b.status === "completed").reduce((sum: number, b: any) => sum + (b.totalPrice ?? 0), 0);
 
   // Monthly spending chart data
   const monthlyData = (() => {
@@ -250,7 +334,23 @@ export default function Dashboard() {
                               variant="ghost"
                               size="sm"
                               className="text-xs text-destructive hover:text-destructive h-7"
-                              onClick={() => cancelBooking.mutate({ bookingId: b.id })}
+                              disabled={cancelRealLoadingId === b.id}
+                              onClick={async () => {
+                                if (!useRealApi) {
+                                  cancelBooking.mutate({ bookingId: b.id });
+                                  return;
+                                }
+                                setCancelRealLoadingId(b.id);
+                                try {
+                                  await cancelBookingReal({ bookingId: b.id });
+                                  toast.success("Agendamento cancelado");
+                                  await refreshDashboardRealData();
+                                } catch {
+                                  toast.error("Erro ao cancelar agendamento");
+                                } finally {
+                                  setCancelRealLoadingId(null);
+                                }
+                              }}
                             >
                               Cancelar
                             </Button>
@@ -451,7 +551,14 @@ export default function Dashboard() {
 
       {/* Review Dialog */}
       <Dialog open={!!reviewBooking} onOpenChange={(o) => !o && setReviewBooking(null)}>
-        {reviewBooking && <ReviewDialog booking={reviewBooking} onClose={() => setReviewBooking(null)} />}
+        {reviewBooking && (
+          <ReviewDialog
+            booking={reviewBooking}
+            useRealApi={useRealApi}
+            onSubmitted={refreshDashboardRealData}
+            onClose={() => setReviewBooking(null)}
+          />
+        )}
       </Dialog>
 
       <Footer />

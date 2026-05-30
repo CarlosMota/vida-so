@@ -116,7 +116,7 @@ const cleaners = [
     isAvailable: true,
   },
   {
-    name: "Josefa Rodrigues",
+    name: "Creuza Rodrigues",
     bio: "Especialista em limpeza pós-obra e higienização profunda. Utiliza produtos de alta qualidade e equipamentos profissionais. Atende apartamentos e casas.",
     serviceTypes: JSON.stringify(["Limpeza básica", "Limpeza profunda", "Pós-obra", "Higienização"]),
     priceBasic: 160,

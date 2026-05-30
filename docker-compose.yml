@@ -28,7 +28,6 @@ services:
     environment:
       PORT: ${PORT:-3001}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
-      DATABASE_URL: ${DATABASE_URL:-mysql://root:root@mysql:3306/app_db}
     ports:
       - "3001:3001"
     depends_on:

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { createBookingReal, getChefByIdReal, getChefReviewsReal } from "@/lib/trpc-real";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 
 export default function ChefProfile() {
+  const useRealApi = import.meta.env.VITE_USE_REAL_API === "true";
   const { id } = useParams<{ id: string }>();
   const { isAuthenticated } = useAuth();
   const [, navigate] = useLocation();
@@ -29,9 +31,57 @@ export default function ChefProfile() {
   const [address, setAddress] = useState("");
   const [guests, setGuests] = useState("2");
   const [booked, setBooked] = useState(false);
+  const [realChef, setRealChef] = useState<any | null>(null);
+  const [realReviews, setRealReviews] = useState<any[]>([]);
+  const [realLoading, setRealLoading] = useState(false);
+  const [bookingRealLoading, setBookingRealLoading] = useState(false);
 
-  const { data: chef, isLoading } = trpc.chefs.getById.useQuery({ id: parseInt(id ?? "0") });
-  const { data: reviews } = trpc.chefs.getReviews.useQuery({ chefId: parseInt(id ?? "0") });
+  const parsedId = parseInt(id ?? "0");
+  const { data: chefMock, isLoading: isLoadingMock } = trpc.chefs.getById.useQuery(
+    { id: parsedId },
+    { enabled: !useRealApi },
+  );
+  const { data: reviewsMock } = trpc.chefs.getReviews.useQuery(
+    { chefId: parsedId },
+    { enabled: !useRealApi },
+  );
+
+  useEffect(() => {
+    if (!useRealApi) return;
+
+    let mounted = true;
+    setRealLoading(true);
+
+    const run = async () => {
+      try {
+        const [chefData, reviewsData] = await Promise.all([
+          getChefByIdReal(parsedId),
+          getChefReviewsReal(parsedId),
+        ]);
+        if (mounted) {
+          setRealChef(chefData ?? null);
+          setRealReviews(reviewsData ?? []);
+        }
+      } catch {
+        if (mounted) {
+          setRealChef(null);
+          setRealReviews([]);
+        }
+      } finally {
+        if (mounted) setRealLoading(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      mounted = false;
+    };
+  }, [useRealApi, parsedId]);
+
+  const chef = useRealApi ? realChef : chefMock;
+  const reviews = useRealApi ? realReviews : reviewsMock;
+  const isLoading = useRealApi ? realLoading : isLoadingMock;
 
   const utils = trpc.useUtils();
   const createBooking = trpc.bookings.create.useMutation({
@@ -286,20 +336,42 @@ export default function ChefProfile() {
             <Button variant="outline" onClick={() => setBookingOpen(false)}>Cancelar</Button>
             <Button
               className="gradient-brand text-white border-0 btn-scale"
-              disabled={!scheduledAt || !address || createBooking.isPending}
-              onClick={() => {
-                createBooking.mutate({
-                  serviceType: "chef",
-                  providerId: chef.id,
-                  scheduledAt,
-                  notes,
-                  totalPrice,
-                  address,
-                  serviceSubtype: `${guests} pessoas`,
-                });
+              disabled={!scheduledAt || !address || createBooking.isPending || bookingRealLoading}
+              onClick={async () => {
+                if (!useRealApi) {
+                  createBooking.mutate({
+                    serviceType: "chef",
+                    providerId: chef.id,
+                    scheduledAt,
+                    notes,
+                    totalPrice,
+                    address,
+                    serviceSubtype: `${guests} pessoas`,
+                  });
+                  return;
+                }
+                setBookingRealLoading(true);
+                try {
+                  await createBookingReal({
+                    serviceType: "chef",
+                    providerId: chef.id,
+                    scheduledAt,
+                    notes,
+                    totalPrice,
+                    address,
+                    serviceSubtype: `${guests} pessoas`,
+                  });
+                  toast.success("Agendamento realizado com sucesso!");
+                  setBookingOpen(false);
+                  setBooked(true);
+                } catch {
+                  toast.error("Erro ao agendar. Tente novamente.");
+                } finally {
+                  setBookingRealLoading(false);
+                }
               }}
             >
-              {createBooking.isPending ? "Agendando..." : "Confirmar Agendamento"}
+              {(createBooking.isPending || bookingRealLoading) ? "Agendando..." : "Confirmar Agendamento"}
             </Button>
           </DialogFooter>
         </DialogContent>

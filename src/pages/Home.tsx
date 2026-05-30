@@ -1,6 +1,8 @@
 import { Link } from "wouter";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { getLoginUrl } from "@/const";
+import { getSystemHealthReal } from "@/lib/trpc-real";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -84,6 +86,22 @@ const testimonials = [
 
 export default function Home() {
   const { isAuthenticated } = useAuth();
+  const [backendOk, setBackendOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void getSystemHealthReal()
+      .then((data) => {
+        if (mounted) setBackendOk(Boolean(data?.ok));
+      })
+      .catch(() => {
+        if (mounted) setBackendOk(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -137,6 +155,13 @@ export default function Home() {
               <span className="flex items-center gap-1.5"><Star className="w-4 h-4 text-yellow-500 fill-yellow-500" /> Avaliações reais</span>
               <span className="flex items-center gap-1.5"><Smartphone className="w-4 h-4 text-purple-500" /> Gestão pelo app</span>
             </div>
+            {backendOk !== null && (
+              <div className="mt-6">
+                <Badge className={backendOk ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-amber-100 text-amber-700 border-amber-200"}>
+                  {backendOk ? "Backend conectado" : "Backend indisponível"}
+                </Badge>
+              </div>
+            )}
           </div>
         </div>
       </section>
